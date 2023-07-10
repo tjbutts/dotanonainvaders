@@ -1,4 +1,4 @@
- ## Mendota P loading estimate ##========================
+## Mendota P loading estimate ##========================
 
 # packages # 
 library(tidyverse)
@@ -194,6 +194,6 @@ phosphorus_load = rbind(join1, join2) %>% arrange(lake)
 phosphorus_load
 
 # write .csv # 
-setwd("C:/Users/tjbut/Box Sync/Active/Active Dota-Nona Invasives/derived data")
-write_csv(phosphorus_load, 'pload.csv')
+#setwd("C:/Users/tjbut/Box Sync/Active/Active Dota-Nona Invasives/derived data")
+#write_csv(phosphorus_load, 'pload.csv')
 
