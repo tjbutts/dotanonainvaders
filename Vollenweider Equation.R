@@ -225,5 +225,266 @@ plot(totpuf_comb~year.mon, data = monona_monthly)
 mo.nut.ts = ts(monona_monthly$totpuf_comb, start = c(1995, 1), end = c(2020, 12), frequency = 12)
 mo.nut.ts.interp = na_interpolation(mo.nut.ts) # NAs in time series need to fill - impute with Kalman Filter 
 plot(mo.nut.ts.interp)
-mo.nut.ts.interp
+
+# Flow weighted # =================================
+
+# Vollenweider to predict annual mean TP concentration in the lake # 
+	#TP = TPin/(1 + tw^0.5)
+
+# Mendota In 
+	# Need: Sum(Daily discharge*Daily P Load) 
+	# Need: Sum(Discharge)
+
+# Mendota In Raw Values # =======================
+
+# packages # 
+library(tidyverse)
+library(lubridate)  
+  
+# sum together tributaries when possible # 
+	# PB solo: 1992 - 2001 
+	# PB + YR: 2002 - 2011
+	# All: 2012 - 2022 
+
+# Perform following interpolation as suggested by USGS Todd 
+	# Yahara River Loads: Regression of HWY 113 & Windsor Gage at Yahara River 2003 - 2019 
+		## Yahara P load = 0.9319*(P load at Windsor YYYY) + 7400.9
+
+	# Dorn Creek Loads (1990 - 2012): Regression between Windsor annual loads 2013 - 2019 
+		## Dorn Creek M P load = 6E-06*(P load at Windsor YYYY)^2 + 0.2642*(P load at Windsor YYYY) + 952.68
+
+	# Sixmile Creek (Dorn Creek Q) P Loads (1990 - 2012): 2E-05*(P load at Windsor YYYY)^2+0.558*(Windsor YYYY)+6658.3  
+
+# Windsor loads 
+setwd("C:/Users/tjbut/Box Sync/Active/Active Dota-Nona Invasives/gage data")
+windsor_load = read_csv('W-YR.csv') %>% # 1995 - 2011
+	mutate(totp_kg_d = total_p_lbs_d/2.20462) %>% 
+	mutate(year = year(datetime)) %>% 
+	filter(year > 1994 & year < 2012)
+windsor_load
+
+# Stuntebeck Loads # 
+setwd("C:/Users/tjbut/Box Sync/Active/Active Dota-Nona Invasives")
+stuntebeck_estimated_loads = read_csv('Stuntebeck_ME_estimate.csv') %>% 
+	filter(year > 1994 & year < 2013)
+stuntebeck_estimated_loads
+
+# Join Mendota P load # 
+mendota_pload_gage = mendota_pload_annum_gages %>% # Directly estimated from the gages 
+	select(year, load_kg_yr) %>% 
+	filter(year > 2012)
+mendota_pload_gage
+stuntebeck_estimated_loads = stuntebeck_estimated_loads %>% # Stuntebeck back estimated through regressions with Windsor load 
+	mutate(load_kg_yr = pload_lbs/2.20462) %>% 
+	select(year, load_kg_yr)
+stuntebeck_estimated_loads
+
+mendota_load_final = rbind(stuntebeck_estimated_loads, mendota_pload_gage)
+mendota_load_final
+
+windows(height = 4, width = 6)
+plot(load_kg_yr~year, data = mendota_load_final, type = 'o',
+		 ylim = c(0, 75000), lwd = 2, col = 'black', 
+		 ylab = 'P load (kg)', xlab = 'Year')
+
+## Gage Data 1995 - present ##=======================
+library(here)
+here('gage_dat')
+setwd(here('gage_dat'))
+
+# Yahara River (Windsor): 1995 - present 
+yr_windsor = read_csv('yr_windsor_gage.csv')
+yr_windsor
+
+# Yahara River (HWY 113): 2002 - present
+yr_hwy113 = read_csv('yr_hwy113_gage.csv')
+yr_hwy113
+
+# Pheasant Branch: 1995 - present 
+pb = read_csv('pb_gage.csv')
+pb
+
+# Dorn Creek: 2012 - present 
+dc = read_csv('dc_gage.csv')
+dc
+
+# Sixmile Creek: 2012 - present 
+smc = read_csv('smc_gage.csv')
+smc
+
+# Perform following interpolation as suggested by USGS Todd - Discharge #==========================
+
+yr_hwy113_dis = yr_hwy113 %>% 
+	mutate(gage = 'yr_hwy113') %>%
+	select(gage, datetime, discharge_ft3_s, discharge_flag) %>% 
+	mutate(datetime = mdy(datetime))
+yr_hwy113_dis
+
+yr_windsor_dis = yr_windsor %>% 
+	mutate(gage = 'yr_windsor') %>%
+	select(gage, datetime, discharge_ft3_s, discharge_flag) %>% 
+	filter(datetime > '2001-12-31')
+yr_windsor_dis
+
+yr_join = rbind(yr_hwy113_dis, yr_windsor_dis)
+yr_join
+
+library(zoo)
+yr_wide = yr_join %>% 
+	filter(discharge_ft3_s >0) %>%
+	pivot_wider(names_from = gage, 
+							values_from = discharge_ft3_s) %>% 
+	drop_na()
+yr_wide
+
+library(ggplot2)
+ggplot(yr_wide, aes(x = yr_windsor, y = yr_hwy113)) + 
+	geom_point()
+
+# Randomly shuffle data # 
+df.shuffled = yr_wide[sample(nrow(yr_wide)), ]
+
+# define number of folds to use for k-fold cross-validation 
+K = 10
+
+# Define degree of polynomials to fit 
+degree = 5
+
+# Create k equal-sized folds 
+folds = cut(seq(1, nrow(df.shuffled)), breaks = K, labels = F)
+
+# Create object to hold MSE's of models 
+mse = matrix(data = NA, nrow = K, ncol = degree)
+
+# Perform K-fold cross-validation 
+for(i in 1:K){
+    
+    #define training and testing data
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- df.shuffled[testIndexes, ]
+    trainData <- df.shuffled[-testIndexes, ]
+    
+    #use k-fold cv to evaluate models
+    for (j in 1:degree){
+        fit.train = lm(log(yr_hwy113) ~ poly(log(yr_windsor), j), data=trainData)
+        fit.test = predict(fit.train, newdata=testData)
+        mse[i,j] = mean((fit.test-testData$yr_hwy113)^2) 
+    }
+}
+
+# find MSE for each degree 
+colMeans(mse) # linear model = lowest MSE 
+
+# Analyze the Final Model # 
+best = lm(log(yr_hwy113) ~ log(yr_windsor), data = yr_wide)
+summary(best)
+plot(best)
+plot(log(yr_hwy113) ~ log(yr_windsor), data = yr_wide)
+abline(best, col = 'red')
+
+# Back-calculate Yahara discharge # 
+	## log(yr_hwy113_dis) = 0.742445*log(yr_windsor) + 1.898055 
+
+yr_hwy113_dis
+yr_hwy113_backdate = yr_windsor %>% 
+	filter(datetime < '2002-01-01') %>% 
+	mutate(backdate = (0.742445*log(discharge_ft3_s)) + 1.898055) %>% 
+	select(datetime, backdate) %>% 
+	rename(discharge_ft3_s = backdate) %>% 
+	mutate(discharge_flag = 'A:e', 
+				 gage = 'interpolated_windsor') %>% 
+	mutate(discharge_ft3_s = exp(discharge_ft3_s)) %>% 
+	select(gage, datetime, discharge_ft3_s, discharge_flag)
+yr_hwy113_backdate
+
+yr_hwy113_dis_interp = rbind(yr_hwy113_dis, yr_hwy113_backdate) %>% arrange(datetime) %>% 
+yr_hwy113_dis_interp
+
+plot(discharge_ft3_s ~ datetime, data = yr_hwy113_dis_interp, type = 'l')
+abline(h = 0)
+
+# Calculate interpolated Yahara load #
+
+yr_hwy113_p = yr_hwy113 %>% 
+	mutate(gage = 'yr_hwy113') %>%
+	select(gage, datetime, p_lbs_d, p_flag) %>% 
+	mutate(datetime = mdy(datetime))
+yr_hwy113_p
+
+yr_windsor_p = yr_windsor %>% 
+	mutate(gage = 'yr_windsor') %>%
+	select(gage, datetime, p_lbs_d, p_flag) %>% 
+	filter(datetime > '2001-12-31')
+yr_windsor_p
+
+yr_join = rbind(yr_hwy113_p, yr_windsor_p)
+yr_join
+
+library(zoo)
+yr_wide = yr_join %>% 
+	filter(p_lbs_d >0) %>%
+	pivot_wider(names_from = gage, 
+							values_from = p_lbs_d) %>% 
+	drop_na() %>% 
+	mutate(lg.yr_windsor = log(yr_windsor), 
+				 lg.yr_hwy113 = log(yr_hwy113))
+yr_wide
+
+library(ggplot2)
+ggplot(yr_wide, aes(x = lg.yr_windsor, y = lg.yr_hwy113)) + 
+	geom_point()
+
+# Randomly shuffle data # 
+df.shuffled = yr_wide[sample(nrow(yr_wide)), ]
+
+# define number of folds to use for k-fold cross-validation 
+K = 10
+
+# Define degree of polynomials to fit 
+degree = 5
+
+# Create k equal-sized folds 
+folds = cut(seq(1, nrow(df.shuffled)), breaks = K, labels = F)
+
+# Create object to hold MSE's of models 
+mse = matrix(data = NA, nrow = K, ncol = degree)
+
+# Perform K-fold cross-validation 
+for(i in 1:K){
+    
+    #define training and testing data
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- df.shuffled[testIndexes, ]
+    trainData <- df.shuffled[-testIndexes, ]
+    
+    #use k-fold cv to evaluate models
+    for (j in 1:degree){
+        fit.train = lm(yr_hwy113 ~ poly(yr_windsor, j), data=trainData)
+        fit.test = predict(fit.train, newdata=testData)
+        mse[i,j] = mean((fit.test-testData$yr_hwy113)^2) 
+    }
+}
+
+# find MSE for each degree 
+colMeans(mse) # linear model = lowest MSE 
+
+# Analyze the Final Model # 
+best = lm(lg.yr_hwy113 ~ lg.yr_windsor, data = yr_wide)
+summary(best)
+plot(best)
+plot(lg.yr_hwy113 ~ lg.yr_windsor, data = yr_wide)
+abline(best, col = 'red')
+
+yr_hwy113_back_p = yr_windsor %>% 
+	select(datetime, p_lbs_d, p_flag) %>% 
+	filter(datetime < '2002-01-01') %>% 
+	mutate(lg.p_lbs_d = (0.576899*p_lbs_d) + 2.045695) %>%
+	mutate(p_lbs_d = exp(lg.p_lbs_d))
+yr_hwy113_back_p
+plot(p_lbs_d~datetime, data = yr_hwy113_back_p, ylim = c(0, 60))
+
+# Dorn Creek Loads (1990 - 2012): Regression between Windsor annual loads 2013 - 2019 
+		## Dorn Creek M P load = 6E-06*(P load at Windsor YYYY)^2 + 0.2642*(P load at Windsor YYYY) + 952.68
+
+	# Sixmile Creek (Dorn Creek Q) P Loads (1990 - 2012): 2E-05*(P load at Windsor YYYY)^2+0.558*(Windsor YYYY)+6658.3  
 
