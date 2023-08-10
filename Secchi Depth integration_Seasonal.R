@@ -150,21 +150,23 @@ secchi_lter
 secchi_memo$sampledate = as.Date(with(secchi_memo, paste(Year, Month, Day, sep = '-')), '%Y-%m-%d')
 secchi_memo_select = secchi_memo %>%
 	select(sampledate, Secchi.Depth.m) %>% 
-	rename(secchi_m = Secchi.Depth.m)
+	rename(secchi_m = Secchi.Depth.m) %>% 
+	mutate(lakeid = 'ME')
 secchi_lter_select = secchi_lter %>% 
-	select(sampledate, secnview) %>% 
+	select(sampledate, secnview, lakeid) %>% 
 	rename(secchi_m = secnview)
 
 secchi_comb_ME = rbind(secchi_memo_select, secchi_lter_select) %>% arrange(sampledate) %>% 
 	mutate(year = year(sampledate), 
 				 month = month(sampledate), 
 				 year.mon = as.yearmon(sampledate)) %>% 
+	filter(lakeid == 'ME') %>%
 	mutate(group = case_when(year < 2009 ~ 'base', 
 													 year > 2008 & year < 2016 ~ 'SWF', 
 													 year > 2015 ~ 'ZM'))
 secchi_comb_ME
 
-ggplot(data = secchi_comb, aes(x = month, y = secchi_m, col = group)) + 
+ggplot(data = secchi_comb_ME, aes(x = month, y = secchi_m, col = group)) + 
 	geom_point() + 
 	scale_color_manual(values = c('seagreen', 'dodgerblue', 'gray30'))
 
@@ -174,33 +176,37 @@ if (!require(mgcv)) install.packages('mgcv')
 library(mgcv)
 if (!require(tidyverse)) install.packages('tidyverse')
 library(tidyverse)
+if (!require(lubridate)) install.packages('lubridate')
+library(lubridate)
 
 ## secchi by period ## ===========================
 
 # Because we will be plotting by period, make some separate data frames to make life easier
 secc_base = secchi_comb_ME %>% 
-	filter(group == 'base') %>%
-	transform(ndate = as.numeric(sampledate))
+	mutate(doy = yday(sampledate)) %>%
+	filter(group == 'base')
 secc_base
 
 secc_SWF = secchi_comb_ME %>% 
+	mutate(doy = yday(sampledate)) %>%
 	filter(group == 'SWF') 
 
 secc_ZM = secchi_comb_ME %>% 
+	mutate(doy = yday(sampledate)) %>%
 	filter(group == 'ZM')
 
 # GAM-ing the secchifor pattern - not analysis...
 
 # Base GAM
-secc_base_gam <- gam(secchi_m ~ s(month, k = 10, bs = 'cs') , data = secc_base, method = 'REML') # Cubic Regression Spline
+secc_base_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_base, method = 'REML') # Cubic Regression Spline
 summary(secc_base_gam) 
 gam.check(secc_base_gam)
 
-secc_SWF_gam <- gam(secchi_m ~ s(month, k = 10, bs = 'cs') , data = secc_SWF, method = 'REML') # Cubic Regression Spline
+secc_SWF_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_SWF, method = 'REML') # Cubic Regression Spline
 summary(secc_SWF_gam) 
 gam.check(secc_SWF_gam)
 
-secc_ZM_gam <- gam(secchi_m ~ s(month, k = 10, bs = 'cs') , data = secc_ZM, method = 'REML') # Cubic Regression Spline
+secc_ZM_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_ZM, method = 'REML') # Cubic Regression Spline
 summary(secc_ZM_gam) 
 gam.check(secc_ZM_gam)
 
@@ -230,8 +236,8 @@ par(omi = c(0.5,0.5,0.5,0.1), mai = c(0.3,0.3,0.1,0.1))
 plot(secc_base_gam, select = 1, 
 		 seWithMean = FALSE, shift = coef(secc_base_gam)[1],
 		 se = TRUE, residuals = TRUE, all.terms = TRUE, shade = TRUE, rug = T,
-		 shade.col = low_col_F, ylim = rev(c(0,12)),
-		 cex = .75, pch = 19, lwd = 0.5, lty = 1, col = low_col,
+		 shade.col = low_col_F, xlim = c(0,366), ylim = rev(c(0, 15)),
+		 cex = .75, pch = 20, lwd = 0.5, lty = 1, col = low_col,
 		 xlab = "", ylab = "", cex.axis= 1.2)
 
 #Plot of the Total P GAM for POND F ===============
@@ -240,8 +246,8 @@ par(new = TRUE) #add new smooth to the same plot
 plot(secc_SWF_gam, select = 1, 
 		 seWithMean = FALSE, shift = coef(secc_SWF_gam)[1],
 		 se = TRUE, residuals = TRUE, all.terms = TRUE, shade = TRUE, rug = T,
-		 shade.col = high_col_E, ylim = rev(c(0,12)),
-		 cex = .75, pch = 17, lwd = 0.5, lty = 1, col = high_col,
+		 shade.col = high_col_E, xlim = c(0,366), ylim = rev(c(0, 15)),
+		 cex = .75, pch = 20, lwd = 0.5, lty = 1, col = high_col,
 		 xlab = "", ylab = "", cex.axis= 1.2)
 
 par(new = TRUE) #add new smooth to the same plot 
@@ -249,13 +255,104 @@ par(new = TRUE) #add new smooth to the same plot
 plot(secc_ZM_gam, select = 1, 
 		 seWithMean = FALSE, shift = coef(secc_ZM_gam)[1],
 		 se = TRUE, residuals = TRUE, all.terms = TRUE, shade = TRUE, rug = T,
-		 shade.col = int_col_D, ylim = rev(c(0,12)),
-		 cex = .75, pch = 15, lwd = 0.5, lty = 1, col = int_col,
+		 shade.col = int_col_D, xlim = c(0,366), ylim = rev(c(0, 15)),
+		 cex = .75, pch = 20, lwd = 0.5, lty = 1, col = int_col,
+		 xlab = "", ylab = "", cex.axis= 1.2)
+mtext(side = 2, line = 2.5, "Secchi Depth (m)", cex = 1.25)
+mtext(side = 1, line = 2.5, 'Day of Year', cex = 1.25)
+legend(x = 290, y = 9, legend = c('Pre', '+SWF', '+ZM'), pch = 19, col = c(low_col, high_col, int_col), 
+			 bg = 'white')
+
+
+# Monona #==============================
+secchi_MO = secchi_lter_select %>% 
+	filter(lakeid == 'MO') %>% 
+	mutate(year = year(sampledate), 
+				 month = month(sampledate), 
+				 year.mon = as.yearmon(sampledate), 
+				 doy = yday(sampledate)) %>% 
+	mutate(group = case_when(year < 2009 ~ 'base', 
+													 year > 2008 & year < 2016 ~ 'SWF', 
+													 year > 2015 ~ 'ZM'))
+secchi_MO
+
+## secchi by period ## ===========================
+
+# Because we will be plotting by period, make some separate data frames to make life easier
+secc_base = secchi_MO %>% 
+	filter(group == 'base')
+secc_base
+
+secc_SWF = secchi_MO %>% 
+	filter(group == 'SWF') 
+
+secc_ZM = secchi_MO %>% 
+	filter(group == 'ZM')
+
+# GAM-ing the secchi for pattern - not analysis...
+
+# Base GAM
+secc_base_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_base, method = 'REML') # Cubic Regression Spline
+summary(secc_base_gam) 
+gam.check(secc_base_gam)
+
+secc_SWF_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_SWF, method = 'REML') # Cubic Regression Spline
+summary(secc_SWF_gam) 
+gam.check(secc_SWF_gam)
+
+secc_ZM_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_ZM, method = 'REML') # Cubic Regression Spline
+summary(secc_ZM_gam) 
+gam.check(secc_ZM_gam)
+
+#Plotting Colors
+#Colors for data visualization
+#Ref: lty = 3, pulse: lty = 1
+low_col_B = rgb(74, 166, 81, max = 255, alpha = 180) #Pond B, Pond F
+low_col_F = rgb(74, 166, 81, max = 255, alpha = 100) #Pond B, Pond F
+low_col = rgb(74, 166, 81, max = 255, alpha = 255) #Pond B, Pond F
+ref_col = rgb(155, 155, 155, max=255, alpha = 100) # Reference
+black_col = rgb(0,0,0, max=255, alpha = 100) # Black
+
+int_col_A = rgb(44, 127, 184, max = 255, alpha = 180) #Pond A, pond D
+int_col_D = rgb(44, 127, 184, max = 255, alpha = 100) #Pond A, pond D
+int_col = rgb(44, 127, 184, max = 255, alpha = 255) #Pond A, pond D
+
+high_col_C = rgb(8, 29, 88, max = 255, alpha = 180) #Pond C, Pond E
+high_col_E = rgb(8, 29, 88, max = 255, alpha = 100) #Pond C, Pond E
+high_col = rgb(8, 29, 88, max = 255, alpha = 255) #Pond C, Pond E
+
+#============================
+# Set up Blank Plot 
+windows(height = 5, width = 7)
+par(omi = c(0.5,0.5,0.5,0.1), mai = c(0.3,0.3,0.1,0.1))
+
+#Plot of the Total P GAM for POND B ===============
+plot(secc_base_gam, select = 1, 
+		 seWithMean = FALSE, shift = coef(secc_base_gam)[1],
+		 se = TRUE, residuals = TRUE, all.terms = TRUE, shade = TRUE, rug = T,
+		 shade.col = low_col_F, xlim = c(0,366), ylim = rev(c(0, 15)),
+		 cex = .75, pch = 20, lwd = 0.5, lty = 1, col = low_col,
 		 xlab = "", ylab = "", cex.axis= 1.2)
 
+#Plot of the Total P GAM for POND F ===============
+par(new = TRUE) #add new smooth to the same plot
 
-mtext(side = 2, line = 3, "Chlorophyll-a (ug/L)", cex = 1.25)
-#mtext(side = 3, line = 0.5, "Low Coupling", cex = 1.25)
-#rect(185,-2,190,50, col=col, border=NA)
+plot(secc_SWF_gam, select = 1, 
+		 seWithMean = FALSE, shift = coef(secc_SWF_gam)[1],
+		 se = TRUE, residuals = TRUE, all.terms = TRUE, shade = TRUE, rug = T,
+		 shade.col = high_col_E, xlim = c(0,366), ylim = rev(c(0, 15)),
+		 cex = .75, pch = 20, lwd = 0.5, lty = 1, col = high_col,
+		 xlab = "", ylab = "", cex.axis= 1.2)
 
+par(new = TRUE) #add new smooth to the same plot 
 
+plot(secc_ZM_gam, select = 1, 
+		 seWithMean = FALSE, shift = coef(secc_ZM_gam)[1],
+		 se = TRUE, residuals = TRUE, all.terms = TRUE, shade = TRUE, rug = T,
+		 shade.col = int_col_D, xlim = c(0,366), ylim = rev(c(0, 15)),
+		 cex = .75, pch = 20, lwd = 0.5, lty = 1, col = int_col,
+		 xlab = "", ylab = "", cex.axis= 1.2)
+mtext(side = 2, line = 2.5, "Secchi Depth (m)", cex = 1.25)
+mtext(side = 1, line = 2.5, 'Day of Year', cex = 1.25)
+legend(x = 290, y = 9, legend = c('Pre', '+SWF', '+ZM'), pch = 19, col = c(low_col, high_col, int_col), 
+			 bg = 'white')
