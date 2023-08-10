@@ -198,15 +198,15 @@ secc_ZM = secchi_comb_ME %>%
 # GAM-ing the secchifor pattern - not analysis...
 
 # Base GAM
-secc_base_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_base, method = 'REML') # Cubic Regression Spline
+secc_base_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cc') , data = secc_base, method = 'REML') # Cyclic Cubic Regression Spline
 summary(secc_base_gam) 
 gam.check(secc_base_gam)
 
-secc_SWF_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_SWF, method = 'REML') # Cubic Regression Spline
+secc_SWF_gam <- gam(secchi_m ~ s(doy, k = 80, bs = 'cc') , data = secc_SWF, method = 'REML') # Cyclic Cubic Regression Spline
 summary(secc_SWF_gam) 
 gam.check(secc_SWF_gam)
 
-secc_ZM_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_ZM, method = 'REML') # Cubic Regression Spline
+secc_ZM_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cc') , data = secc_ZM, method = 'REML') # Cyclic Cubic Regression Spline
 summary(secc_ZM_gam) 
 gam.check(secc_ZM_gam)
 
@@ -292,15 +292,15 @@ secc_ZM = secchi_MO %>%
 # GAM-ing the secchi for pattern - not analysis...
 
 # Base GAM
-secc_base_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_base, method = 'REML') # Cubic Regression Spline
+secc_base_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cc') , data = secc_base, method = 'REML') # Cubic Regression Spline
 summary(secc_base_gam) 
 gam.check(secc_base_gam)
 
-secc_SWF_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_SWF, method = 'REML') # Cubic Regression Spline
+secc_SWF_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cc') , data = secc_SWF, method = 'REML') # Cubic Regression Spline
 summary(secc_SWF_gam) 
 gam.check(secc_SWF_gam)
 
-secc_ZM_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cs') , data = secc_ZM, method = 'REML') # Cubic Regression Spline
+secc_ZM_gam <- gam(secchi_m ~ s(doy, k = 40, bs = 'cc') , data = secc_ZM, method = 'REML') # Cubic Regression Spline
 summary(secc_ZM_gam) 
 gam.check(secc_ZM_gam)
 
